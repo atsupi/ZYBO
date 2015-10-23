@@ -50,6 +50,8 @@
 #include "xiicps.h"
 #include "xparameters.h"
 
+#define REG_I2S_OUT(adr)		(*(volatile unsigned int *)(XPAR_I2S_OUT_0_S_AXI_BASEADDR + (adr)))
+
 #define SSM2603_IIC_ADDRESS		0x1A
 
 static XIicPs iic;
@@ -84,7 +86,7 @@ int initI2C(void)
 
 	Config = XIicPs_LookupConfig(XPAR_XIICPS_0_DEVICE_ID);
 	XIicPs_CfgInitialize(&iic, Config, Config->BaseAddress);
-	XIicPs_SetSClk(&iic, 100000);
+	XIicPs_SetSClk(&iic, 400000);
 
 	return Status;
 }
@@ -99,10 +101,11 @@ uint8_t SSM2603_Init[INIT_COUNT] = {
   6 | 0x01, 0xF9 ,    /* R3: R_HP vol : LR simul-update, zero-cross, 0dB */
   8 | 0x00, 0x12 ,    /* R4: Analog Audio Path : No Sidetone, No bypass, DAC for Out, Line out for ADC, Mic Mute */
  10 | 0x00, 0x00 ,    /* R5: Digital Path: DAC unmute, De-emphasis 48k, ADC HPF enable */
- 12 | 0x00, 0x02 ,    /* R6: Power Down : Only Mic is down*/
- 14 | 0x00, 0x4E ,    /* R7: Digital Audio Format : Master, 32bit, I2S */
- 16 | 0x00, 0x01 ,    /* R8: Sanmpling Rate, 48kHz, USB mode*/
- 18 | 0x00, 0x01      /* R9: Activateion : Active. */
+ 12 | 0x00, 0x02 ,    /* R6: Power Down : Microphone is down*/
+// 14 | 0x00, 0x4E ,    /* R7: Digital Audio Format : Master, 32bit, I2S */
+ 14 | 0x00, 0x0E ,    /* R7: Digital Audio Format : Slave, 16bit, I2S */
+ 16 | 0x00, 0x01 ,    /* R8: Sampling Rate, 48kHz, USB mode*/
+ 18 | 0x00, 0x01      /* R9: Activation : Active. */
 };
 
 void InitSSM2603(void)
@@ -114,12 +117,37 @@ void InitSSM2603(void)
 
 int main()
 {
+	int i;
+
     init_platform();
     initI2C();
 
     xil_printf("Hello World\n\r");
 
     InitSSM2603();
+
+//    REG_I2S_OUT(0) = 0xFF000000; // debug=255, mute=0, lr_mode=both LR
+    REG_I2S_OUT(0) = 0xFF000002; // debug=255, mute=0, lr_mode=R only
+//    REG_I2S_OUT(4) = 0xFF000001; // l_fifo=0xff00, r_fifo=0x0001
+    while (1)
+    {
+        REG_I2S_OUT(0) = 0xFF000002; // debug=255, mute=0, lr_mode=R only
+    	for (i = 0; i < 10000000; i++);
+        REG_I2S_OUT(0) = 0xFF000006; // debug=255, mute=0, lr_mode=R only
+    	for (i = 0; i < 10000000; i++);
+        REG_I2S_OUT(0) = 0xFF000000; // debug=255, mute=0, lr_mode=R only
+    	for (i = 0; i < 10000000; i++);
+        REG_I2S_OUT(0) = 0xFF000006; // debug=255, mute=0, lr_mode=R only
+    	for (i = 0; i < 10000000; i++);
+        REG_I2S_OUT(0) = 0xFF000004; // debug=255, mute=0, lr_mode=R only
+    	for (i = 0; i < 10000000; i++);
+        REG_I2S_OUT(0) = 0xFF000006; // debug=255, mute=0, lr_mode=R only
+    	for (i = 0; i < 10000000; i++);
+        REG_I2S_OUT(0) = 0xFF000000; // debug=255, mute=0, lr_mode=R only
+    	for (i = 0; i < 10000000; i++);
+        REG_I2S_OUT(0) = 0xFF000006; // debug=255, mute=0, lr_mode=R only
+    	for (i = 0; i < 10000000; i++);
+    }
 
     cleanup_platform();
     return 0;

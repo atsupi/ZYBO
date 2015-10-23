@@ -61,6 +61,9 @@ architecture arch_imp of i2s_out_v1_0 is
 		C_S_AXI_ADDR_WIDTH	: integer	:= 4
 		);
 		port (
+		lrmode : out std_logic_vector(1 downto 0);
+        mute : out std_logic;
+        debug : out std_logic_vector(7 downto 0);
 		S_AXI_ACLK	: in std_logic;
 		S_AXI_ARESETN	: in std_logic;
 		S_AXI_AWADDR	: in std_logic_vector(C_S_AXI_ADDR_WIDTH-1 downto 0);
@@ -93,9 +96,11 @@ component audio_fifo_0 IS
     din : IN STD_LOGIC_VECTOR(31 DOWNTO 0);
     wr_en : IN STD_LOGIC;
     rd_en : IN STD_LOGIC;
-    dout : OUT STD_LOGIC_VECTOR(15 DOWNTO 0);
+    dout : OUT STD_LOGIC_VECTOR(31 DOWNTO 0);
     full : OUT STD_LOGIC;
-    empty : OUT STD_LOGIC
+    almost_full : OUT STD_LOGIC;
+    empty : OUT STD_LOGIC;
+    almost_empty : OUT STD_LOGIC
   );
 END component;
 
@@ -110,7 +115,13 @@ signal b_cycle : integer range 0 to 6;
 signal f_cycle : integer range 0 to 109;
 signal fdout : std_logic_vector(15 downto 0);
 signal pblrc : std_logic;
+signal pblrc_r : std_logic;
 signal pbdat : std_logic_vector(15 downto 0);
+signal lrc_cycle : integer range 0 to 96000;
+
+signal lrmode : std_logic_vector(1 downto 0);
+signal mute : std_logic;
+signal debug : std_logic_vector(7 downto 0);
 
 begin
 
@@ -121,6 +132,9 @@ i2s_out_v1_0_S_AXI_inst : i2s_out_v1_0_S_AXI
 		C_S_AXI_ADDR_WIDTH	=> C_S_AXI_ADDR_WIDTH
 	)
 	port map (
+	    lrmode => lrmode,
+	    mute => mute,
+	    debug => debug,
 		S_AXI_ACLK	=> s_axi_aclk,
 		S_AXI_ARESETN	=> s_axi_aresetn,
 		S_AXI_AWADDR	=> s_axi_awaddr,
@@ -158,17 +172,17 @@ i2s_out_v1_0_S_AXI_inst : i2s_out_v1_0_S_AXI
         rd_en => '0',
         dout => open,
         full => open,
-        empty => open
+        almost_full => open,
+        empty => open,
+        almost_empty => open
     );
 
 	reset <= not s_axi_aresetn;
     ac_recdat <= '0';
     ac_reclrc <= '0';
-    ac_muten <= '1';
+    ac_muten <= not mute;
     
     led <= led_r;
-    led_r(0) <= '0';
-    led_r(1) <= '0';
 
     process (ac_mclk, reset) begin
         if (reset = '1') then
@@ -225,17 +239,27 @@ i2s_out_v1_0_S_AXI_inst : i2s_out_v1_0_S_AXI
             pbdat <= (others => '0');
         elsif (ac_mclk'event and ac_mclk = '1') then
             if (fs_cycle >= 249) then
-                pblrc <= '1';   -- RIGHT
+                pblrc <= '0';   -- LEFT
                 if (f_cycle = 107) then
                     fdout <= "0001000000000000";
                 elsif (f_cycle = 53) then
                     fdout <= "0000000000000000";
                 end if;
             elsif (fs_cycle >= 124) then
-                pblrc <= '0';   -- LEFT
+                pblrc <= '1';   -- RIGHT
             end if;
-            if (fs_cycle = 5) then
-                pbdat <= fdout;
+            if (fs_cycle = 5) then -- LEFT
+                if (lrmode(1) = '1') then
+                    pbdat <= (others => '0');
+                else
+                    pbdat <= fdout;
+                end if;
+            elsif (fs_cycle = 130) then -- RIGHT
+                if (lrmode(0) = '1') then
+                    pbdat <= (others => '0');
+                else
+                    pbdat <= fdout;
+                end if;
             else
                 if (b_cycle = 5) then
                     pbdat <= pbdat(14 downto 0) & '0';
@@ -263,7 +287,7 @@ i2s_out_v1_0_S_AXI_inst : i2s_out_v1_0_S_AXI
             led_r(2) <= '1';
         elsif (ac_mclk'event and ac_mclk = '1') then
             if (bclk = '1' and bclk_r = '0') then
-                if (bc_count >= 1000000) then
+                if (bc_count >= 1008000) then
                     led_r(2) <= not led_r(2);
                     bc_count <= 0;
                 else
@@ -273,7 +297,34 @@ i2s_out_v1_0_S_AXI_inst : i2s_out_v1_0_S_AXI
             bclk_r <= bclk;
         end if;
     end process;
-    
+
+    process (ac_mclk, reset) begin
+        if (reset = '1') then
+            led_r(1) <= '1';
+        elsif (ac_mclk'event and ac_mclk = '1') then
+            if (f_cycle = 0 and fs_cycle = 0) then
+                led_r(1) <= not led_r(1);
+            end if;
+        end if;
+    end process;
+
+    process (ac_mclk, reset) begin
+        if (reset = '1') then
+            led_r(0) <= '1';
+            lrc_cycle <= 0;
+        elsif (ac_mclk'event and ac_mclk = '1') then
+            if (pblrc_r = '0' and pblrc = '1') then
+                if (lrc_cycle >= 47999) then
+                    lrc_cycle <= 0;
+                    led_r(0) <= not led_r(0);
+                else
+                    lrc_cycle <= lrc_cycle + 1;
+                end if;
+            else
+            end if;
+            pblrc_r <= pblrc;
+        end if;
+    end process;
     -- User logic ends
 
 end arch_imp;

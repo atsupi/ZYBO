@@ -16,7 +16,9 @@ entity i2s_out_v1_0_S_AXI is
 	);
 	port (
 		-- Users to add ports here
-
+		lrmode : out std_logic_vector(1 downto 0);
+		mute : out std_logic;
+		debug : out std_logic_vector(7 downto 0);
 		-- User ports ends
 		-- Do not modify the ports beyond this line
 
@@ -379,7 +381,9 @@ begin
 
 
 	-- Add user logic here
-
+    debug <= slv_reg0(31 downto 24);
+    mute <= slv_reg0(0);
+    lrmode <= slv_reg0(2 downto 1);
 	-- User logic ends
 
 end arch_imp;
